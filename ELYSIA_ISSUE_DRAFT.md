@@ -1,15 +1,16 @@
-# 🚨 Severe Performance Regression: AOT Compilation 45x Slower on Bun Runtime
+## What is the expected behavior?
 
-## Issue Summary
-Elysia's AOT (Ahead of Time) compilation causes a **45.7x performance degradation** specifically when running on Bun runtime. This makes Elysia practically unusable in production with default settings.
+AOT (Ahead of Time) compilation should improve or maintain performance compared to JIT compilation, not degrade it. With default settings, Elysia should provide optimal performance across all supported runtimes (Bun, Deno, Node.js).
 
-## Environment
-- **Elysia Version**: 1.4.18 (also affects 1.2 when AOT manually enabled)
-- **Runtime**: Bun (latest)
-- **Node.js**: Works fine
-- **Deno**: Works fine
+Specifically:
+- AOT compilation should result in equal or better RPS than non-AOT
+- Default settings should work well on all supported runtimes
+- Performance should be consistent between runtimes for the same configuration
+- Users should expect ~150K+ RPS on Bun for simple endpoints (based on framework capabilities)
 
-## Performance Data
+## What do you see instead?
+
+AOT compilation causes a **45.7x performance degradation** specifically on Bun runtime:
 
 | Configuration | Runtime | Root RPS | JSON RPS | Latency (Root) |
 |--------------|----------|-----------|-----------|----------------|
@@ -17,48 +18,43 @@ Elysia's AOT (Ahead of Time) compilation causes a **45.7x performance degradatio
 | **Elysia 1.4 (aot: false)** | Bun | 175,951 | 32,275 | 2.27ms |
 | **Elysia 1.2 (aot: false)** | Bun | 64,752 | 18,992 | 6.09ms |
 
-**Performance Impact**: AOT causes **45.7x slower** performance on Bun.
+**Key Issues:**
+- AOT causes 45.7x slower performance on Bun (3,853 vs 175,951 RPS)
+- The issue is Bun-specific - AOT works fine on Deno (72,178 RPS) and Node.js (33,797 RPS)
+- Default settings make Elysia practically unusable on Bun
+- Performance contradicts the intended purpose of AOT compilation
 
-## Comparison with Other Runtimes
+## Additional information
 
-| Configuration | Bun RPS | Deno RPS | Node.js RPS |
-|--------------|-----------|-----------|-------------|
-| **Elysia (aot: true)** | 3,853 | 72,178 | 33,797 |
-| **Elysia (aot: false)** | 175,951 | 147,429 | 36,266 |
+### Environment
+- **Elysia Version**: 1.4.18 (also affects 1.2 when AOT manually enabled)
+- **Runtime**: Bun (latest)
+- **OS**: Linux
+- **Benchmark Tool**: wrk
 
-The issue is **Bun-specific** - AOT works fine on Deno and Node.js.
-
-## Reproduction Steps
-
-1. Create a simple Elysia app:
+### Reproduction Code
 ```typescript
 import { Elysia } from 'elysia';
 
-const app = new Elysia() // Uses aot: true by default in 1.4
+// This uses aot: true by default in 1.4 (broken on Bun)
+const app = new Elysia()
   .get("/", "Hello Elysia")
   .get("/json", () => ({ message: "Hello World", timestamp: Date.now() }));
 
 app.listen(3000);
 ```
 
-2. Run with Bun:
-```bash
-bun run app.ts
-```
+### Reproduction Steps
+1. Create Elysia app with default settings (aot: true)
+2. Run with Bun: `bun run app.ts`
+3. Benchmark: `wrk -t12 -c400 -d10s http://localhost:3000/`
+4. Observe ~3K RPS instead of expected ~150K+ RPS
 
-3. Benchmark:
-```bash
-wrk -t12 -c400 -d10s http://localhost:3000/
-```
-
-4. Expected: ~150K+ RPS
-5. Actual: ~3K RPS
-
-## Workaround
-Add `aot: false` to Elysia configuration:
+### Working Workaround
 ```typescript
 import { Elysia } from 'elysia';
 
+// Adding aot: false fixes the issue
 const app = new Elysia({ aot: false })
   .get("/", "Hello Elysia")
   .get("/json", () => ({ message: "Hello World", timestamp: Date.now() }));
@@ -66,60 +62,30 @@ const app = new Elysia({ aot: false })
 app.listen(3000);
 ```
 
-This restores performance to ~175K RPS.
+### Performance Comparison with Other Frameworks
+| Framework | Runtime | Configuration | RPS |
+|-----------|----------|----------------|-----|
+| **Hono** | Bun | - | 237,229 |
+| **Elysia** | Bun | aot: false | 175,951 |
+| **Elysia** | Bun | aot: true (default) | 3,853 |
 
-## Root Cause Analysis
+### Root Cause Analysis
+The issue appears to be in Elysia's AOT compiler generating code that is incompatible or inefficient with Bun's runtime. The fact that:
+- Only Bun is affected (Deno/Node.js work fine)
+- `aot: false` performs better than supposed optimization
+- Performance difference is 45x (not marginal)
 
-The issue appears to be in Elysia's AOT compiler generating code that is incompatible or inefficient with Bun's runtime. Possible causes:
+Suggests a fundamental incompatibility between Elysia's AOT output and Bun's execution environment.
 
-1. **Bun-specific bytecode incompatibility**
-2. **Memory allocation patterns that trigger Bun's GC issues**
-3. **Runtime-specific optimizations that conflict with Bun's JIT**
-4. **Compilation pipeline assumes Node.js runtime characteristics**
-
-## Impact Assessment
-
+### Impact
 - **Severity**: Critical - makes Elysia unusable on Bun with default settings
-- **Scope**: Affects all Elysia 1.4 users on Bun
 - **User Impact**: Silent performance regression (users expect AOT to improve performance)
+- **Production Risk**: Default configuration cannot handle realistic traffic loads
 
-## Expected Behavior
+### Additional Test Results
+The issue was discovered during comprehensive benchmarking across multiple load patterns:
+- High load (12 threads, 400 connections): 45.7x regression
+- Medium load (4 threads, 50 connections): Similar regression pattern
+- Low load (1 thread, 1 connection): Regression persists
 
-1. AOT compilation should improve or maintain performance, not degrade it
-2. Default settings should work optimally across all supported runtimes
-3. Performance should be consistent between runtimes for the same configuration
-
-## Actual Behavior
-
-1. AOT compilation causes 45x performance degradation on Bun
-2. Default settings make Elysia practically unusable on Bun
-3. Performance varies dramatically between runtimes for same configuration
-
-## Suggested Solutions
-
-### Immediate (Documentation)
-- Update docs to recommend `aot: false` for Bun users
-- Add runtime-specific recommendations
-
-### Short-term (Bug Fix)
-- Investigate AOT compilation pipeline for Bun compatibility
-- Fix bytecode generation for Bun runtime
-- Consider runtime-specific compilation paths
-
-### Medium-term (Defaults)
-- Consider runtime-specific default AOT settings
-- Add runtime detection and appropriate defaults
-
-### Long-term (Testing)
-- Implement automated performance testing across all runtimes
-- Add CI checks to prevent performance regressions
-
-## Additional Context
-
-This issue was discovered during comprehensive benchmarking of JavaScript runtimes and frameworks. The benchmark repository is available for reproduction and testing.
-
-The fact that `aot: false` performs **better** than the supposed optimization suggests a fundamental issue with the AOT implementation for Bun runtime.
-
-## Priority: Critical
-
-This issue blocks production use of Elysia on Bun and represents a significant performance regression that contradicts the intended purpose of AOT compilation.
+This confirms the issue is not load-dependent but fundamental to the AOT compilation process on Bun.
