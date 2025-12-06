@@ -22,7 +22,7 @@ We discovered a **severe performance regression** in Elysia when using AOT (Ahea
 |----------------|--------------|---------|----------|----------|----------------|
 | **1.4** | aot: true (default) | Bun | 3,853 | 3,298 | 101.76ms |
 | **1.4** | aot: false | Bun | 175,951 | 32,275 | 2.27ms |
-| **1.2** | aot: false | Bun | 64,752 | 18,992 | 6.09ms |
+| **1.2** | default | Bun | 64,752 | 18,992 | 6.09ms |
 | **1.2** | aot: false | Bun | 160,000+ | - | - |
 
 **Key Finding**: AOT compilation causes **45.7x performance degradation** on Bun. Setting `aot: false` completely resolves the issue and actually improves performance beyond Elysia 1.2 levels.
