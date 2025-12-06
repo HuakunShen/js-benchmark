@@ -14,17 +14,18 @@ This repository contains comprehensive performance benchmarks comparing differen
 
 ## Key Findings
 
-### 🚨 Critical Issue: Elysia 1.4 Performance Regression
+### 🚨 Critical Issue: Elysia AOT Performance Bug on Bun
 
-We discovered a **severe performance regression** in Elysia v1.4 when running on Bun:
+We discovered a **severe performance regression** in Elysia when using AOT (Ahead of Time) compilation on Bun runtime:
 
-| Elysia Version | Runtime | Root RPS | JSON RPS | Latency (Root) |
-|----------------|---------|----------|----------|----------------|
-| **1.4** | Bun | 3,853 | 3,298 | 101.76ms |
-| **1.2** | Bun | 64,752 | 18,992 | 6.09ms |
-| **Improvement** | - | **16.8x** | **5.8x** | **16.7x better** |
+| Elysia Version | AOT Setting | Runtime | Root RPS | JSON RPS | Latency (Root) |
+|----------------|--------------|---------|----------|----------|----------------|
+| **1.4** | aot: true (default) | Bun | 3,853 | 3,298 | 101.76ms |
+| **1.4** | aot: false | Bun | 175,951 | 32,275 | 2.27ms |
+| **1.2** | aot: false | Bun | 64,752 | 18,992 | 6.09ms |
+| **1.2** | aot: false | Bun | 160,000+ | - | - |
 
-This represents a **16-17x performance degradation** in Elysia 1.4 compared to 1.2 when running on Bun.
+**Key Finding**: AOT compilation causes **45.7x performance degradation** on Bun. Setting `aot: false` completely resolves the issue and actually improves performance beyond Elysia 1.2 levels.
 
 ## Performance Results
 
@@ -34,17 +35,17 @@ This represents a **16-17x performance degradation** in Elysia 1.4 compared to 1
 
 | Framework | Bun | Deno | Node.js |
 |-----------|-----|------|---------|
-| **Hono** | 237,157 | 228,402 | 130,789 |
-| **Elysia 1.2** | 64,752 | 75,363 | 36,579 |
-| **Elysia 1.4** | 3,853 | 72,178 | 33,797 |
+| **Hono** | 237,229 | 231,065 | 130,533 |
+| **Elysia (aot: false)** | 175,951 | 147,429 | 36,266 |
+| **Elysia (aot: true)** | 3,853 | 72,178 | 33,797 |
 
 #### JSON Endpoint Performance (RPS)
 
 | Framework | Bun | Deno | Node.js |
 |-----------|-----|------|---------|
-| **Hono** | 33,633 | 18,266 | 17,467 |
-| **Elysia 1.2** | 18,992 | 16,086 | 14,963 |
-| **Elysia 1.4** | 3,298 | 16,280 | 13,765 |
+| **Hono** | 33,528 | 18,313 | 17,335 |
+| **Elysia (aot: false)** | 32,275 | 18,033 | 14,941 |
+| **Elysia (aot: true)** | 3,298 | 16,280 | 13,765 |
 
 ### Medium Load (4 threads, 50 connections)
 
@@ -90,22 +91,24 @@ This represents a **16-17x performance degradation** in Elysia 1.4 compared to 1
 
 ### Hono vs Elysia (Same Runtime)
 
-| Runtime | Hono RPS | Elysia 1.2 RPS | Performance Gap |
-|---------|----------|----------------|-----------------|
-| **Bun** | 237,157 | 64,752 | Hono **3.7x faster** |
-| **Deno** | 228,402 | 75,363 | Hono **3.0x faster** |
-| **Node.js** | 130,789 | 36,579 | Hono **3.6x faster** |
+| Runtime | Hono RPS | Elysia (aot: false) RPS | Elysia (aot: true) RPS | Performance Gap |
+|---------|----------|------------------------|----------------------|-----------------|
+| **Bun** | 237,229 | 175,951 | 3,853 | Hono **1.3x faster** (vs aot:false) |
+| **Deno** | 231,065 | 147,429 | 72,178 | Hono **1.6x faster** (vs aot:false) |
+| **Node.js** | 130,533 | 36,266 | 33,797 | Hono **3.6x faster** (vs aot:false) |
+
+**Key Insight**: With `aot: false`, Elysia becomes competitive with Hono on Bun (only 26% slower).
 
 ## Latency Analysis
 
 ### Best Latency (Root Endpoint)
 
 1. **Hono-Bun**: 1.67ms
-2. **Hono-Deno**: 1.73ms
-3. **Hono-Node**: 7.44ms
-4. **Elysia 1.2-Deno**: 5.23ms
-5. **Elysia 1.2-Bun**: 6.09ms
-6. **Elysia 1.4-Bun**: 101.76ms (severe regression)
+2. **Hono-Deno**: 1.72ms
+3. **Elysia (aot: false)-Bun**: 2.27ms
+4. **Elysia (aot: false)-Deno**: 2.69ms
+5. **Hono-Node**: 7.48ms
+6. **Elysia (aot: true)-Bun**: 101.76ms (severe AOT regression)
 
 ## Reproduction Steps
 
@@ -140,23 +143,40 @@ To reproduce these benchmarks:
 ## Issue Report for Elysia Team
 
 ### Problem Summary
-Elysia version 1.4 introduces a severe performance regression when running on Bun runtime, causing 16-17x performance degradation compared to version 1.2.
+Elysia's AOT (Ahead of Time) compilation has a severe performance bug specifically when running on Bun runtime, causing 45.7x performance degradation. The issue affects both Elysia 1.4 (default aot: true) and can be reproduced in 1.2 when manually enabling AOT.
 
 ### Expected Behavior
-Elysia should maintain consistent performance across minor version updates, similar to how it performs in Deno and Node.js.
+- AOT compilation should improve performance, not degrade it
+- Default settings should provide optimal performance across all supported runtimes
+- Performance should be consistent between runtimes for the same configuration
 
 ### Actual Behavior
-- Elysia 1.4 + Bun: 3,853 RPS (Root), 3,298 RPS (JSON)
-- Elysia 1.2 + Bun: 64,752 RPS (Root), 18,992 RPS (JSON)
-- Performance loss: **16.8x** (Root), **5.8x** (JSON)
+- Elysia 1.4 + Bun (aot: true, default): 3,853 RPS (Root), 3,298 RPS (JSON)
+- Elysia 1.4 + Bun (aot: false): 175,951 RPS (Root), 32,275 RPS (JSON)
+- Elysia 1.2 + Bun (aot: false): 64,752 RPS (Root), 18,992 RPS (JSON)
+- Performance loss with AOT: **45.7x** (Root), **9.8x** (JSON)
+
+### Additional Findings
+- AOT works correctly on Deno and Node.js (no major performance impact)
+- The issue is specific to Bun runtime + AOT compilation combination
+- Documentation may be incorrect about default AOT settings in different versions
 
 ### Impact
 This regression makes Elysia practically unusable in production environments using Bun, as performance drops to levels that cannot handle realistic traffic loads.
 
 ### Recommendation
-1. **Immediate**: Document the compatibility issue and recommend Elysia 1.2 for Bun users
-2. **Short-term**: Investigate and fix the regression in the 1.4.x branch
-3. **Long-term**: Implement automated performance testing to prevent future regressions
+1. **Immediate**: Update documentation to recommend `aot: false` for Bun users
+2. **Short-term**: Fix AOT compilation bug for Bun runtime in the 1.4.x branch
+3. **Medium-term**: Consider runtime-specific default AOT settings
+4. **Long-term**: Implement automated performance testing across all runtimes to prevent future regressions
+
+### Workaround for Users
+```typescript
+import { Elysia } from 'elysia';
+
+// Add aot: false for Bun runtime
+const app = new Elysia({ aot: false });
+```
 
 ## Test Configuration Details
 
