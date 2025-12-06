@@ -1,5 +1,8 @@
 # JavaScript Runtime & Framework Performance Benchmark
 
+> Experiment Environment: Ubuntu 24, i7 13700k
+> Similar results on Mac M4 pro
+
 This repository contains comprehensive performance benchmarks comparing different JavaScript runtimes (Bun, Deno, Node.js) with web frameworks (Hono, Elysia).
 
 ## Test Environment
